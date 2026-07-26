@@ -1,6 +1,5 @@
 package com.buildprocure.admin_console_backend.config;
 
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.Authentication;
@@ -31,22 +30,21 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
 
         String token = jwtService.generateToken(name, email);
 
-        Cookie cookie = new Cookie("auth_token", token);
-        cookie.setHttpOnly(true);
-        cookie.setSecure(cookieSecure);
-        cookie.setPath("/");
-        cookie.setMaxAge(8 * 60 * 60);
-        cookie.setAttribute("SameSite", "None");
-        response.addCookie(cookie);
-
-        Cookie idTokenCookie = new Cookie("ms_id_token", oidcUser.getIdToken().getTokenValue());
-        idTokenCookie.setHttpOnly(true);
-        idTokenCookie.setSecure(cookieSecure);
-        idTokenCookie.setPath("/");
-        idTokenCookie.setMaxAge(8 * 60 * 60);
-        idTokenCookie.setAttribute("SameSite", "None");
-        response.addCookie(idTokenCookie);
+        response.addHeader("Set-Cookie", buildCookie("auth_token", token, 8 * 60 * 60));
+        response.addHeader("Set-Cookie", buildCookie("ms_id_token", oidcUser.getIdToken().getTokenValue(), 8 * 60 * 60));
 
         response.sendRedirect(frontendUrl);
+    }
+
+    private String buildCookie(String name, String value, int maxAgeSeconds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(name).append("=").append(value)
+          .append("; Max-Age=").append(maxAgeSeconds)
+          .append("; Path=/")
+          .append("; HttpOnly");
+        if (cookieSecure) {
+            sb.append("; Secure; SameSite=None");
+        }
+        return sb.toString();
     }
 }

@@ -51,19 +51,8 @@ public class AuthController {
             }
         }
 
-        Cookie authCookie = new Cookie("auth_token", null);
-        authCookie.setHttpOnly(true);
-        authCookie.setPath("/");
-        authCookie.setMaxAge(0);
-        authCookie.setAttribute("SameSite", "None");
-        response.addCookie(authCookie);
-
-        Cookie idCookie = new Cookie("ms_id_token", null);
-        idCookie.setHttpOnly(true);
-        idCookie.setPath("/");
-        idCookie.setMaxAge(0);
-        idCookie.setAttribute("SameSite", "None");
-        response.addCookie(idCookie);
+        response.addHeader("Set-Cookie", buildExpiredCookie("auth_token"));
+        response.addHeader("Set-Cookie", buildExpiredCookie("ms_id_token"));
 
         StringBuilder logoutUrl = new StringBuilder("https://login.microsoftonline.com/" + tenantId
             + "/oauth2/v2.0/logout?post_logout_redirect_uri="
@@ -74,5 +63,15 @@ public class AuthController {
         }
 
         response.sendRedirect(logoutUrl.toString());
+    }
+
+    private String buildExpiredCookie(String name) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(name).append("=")
+          .append("; Max-Age=0")
+          .append("; Path=/")
+          .append("; HttpOnly")
+          .append("; Secure; SameSite=None");
+        return sb.toString();
     }
 }
