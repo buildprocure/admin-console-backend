@@ -55,14 +55,14 @@ public class AuthController {
         authCookie.setHttpOnly(true);
         authCookie.setPath("/");
         authCookie.setMaxAge(0);
-        cookie.setAttribute("SameSite", "None");
+        authCookie.setAttribute("SameSite", "None");
         response.addCookie(authCookie);
 
         Cookie idCookie = new Cookie("ms_id_token", null);
         idCookie.setHttpOnly(true);
         idCookie.setPath("/");
         idCookie.setMaxAge(0);
-        cookie.setAttribute("SameSite", "None");
+        idCookie.setAttribute("SameSite", "None");
         response.addCookie(idCookie);
 
         StringBuilder logoutUrl = new StringBuilder("https://login.microsoftonline.com/" + tenantId
