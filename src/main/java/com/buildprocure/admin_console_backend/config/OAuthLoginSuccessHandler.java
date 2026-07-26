@@ -36,6 +36,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         cookie.setSecure(cookieSecure);
         cookie.setPath("/");
         cookie.setMaxAge(8 * 60 * 60);
+        cookie.setAttribute("SameSite", "None");
         response.addCookie(cookie);
 
         Cookie idTokenCookie = new Cookie("ms_id_token", oidcUser.getIdToken().getTokenValue());
@@ -43,6 +44,7 @@ public class OAuthLoginSuccessHandler implements AuthenticationSuccessHandler {
         idTokenCookie.setSecure(cookieSecure);
         idTokenCookie.setPath("/");
         idTokenCookie.setMaxAge(8 * 60 * 60);
+        idTokenCookie.setAttribute("SameSite", "None");
         response.addCookie(idTokenCookie);
 
         response.sendRedirect(frontendUrl);
