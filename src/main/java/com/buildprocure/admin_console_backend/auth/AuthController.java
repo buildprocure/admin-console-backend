@@ -1,6 +1,6 @@
-package com.buildprocure.admin_console_backend;
+package com.buildprocure.admin_console_backend.auth;
 
-import com.buildprocure.admin_console_backend.config.AuthenticatedUser;
+import com.buildprocure.admin_console_backend.common.util.RedirectValidator;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -8,11 +8,14 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 public class AuthController {
@@ -20,12 +23,39 @@ public class AuthController {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
+    @Value("${app.allowed-redirect-origins}")
+    private String allowedRedirectOriginsRaw;
+
+    @Value("${app.cookie-secure}")
+    private boolean cookieSecure;
+
     @Value("${app.azure.tenant-id}")
     private String tenantId;
 
+    private static final String REDIRECT_COOKIE = "post_login_redirect";
+
     @GetMapping("/auth/login")
-    public void login(HttpServletResponse response) throws IOException {
+    public void login(@RequestParam(required = false) String redirect, HttpServletResponse response) throws IOException {
+        Set<String> allowedOrigins = RedirectValidator.parseOrigins(allowedRedirectOriginsRaw);
+        if (RedirectValidator.isAllowed(redirect, allowedOrigins)) {
+            // Carried across the Entra ID round-trip as a short-lived cookie;
+            // OAuthLoginSuccessHandler reads and re-validates it before using it.
+            response.addHeader("Set-Cookie", buildRedirectCookie(redirect));
+        }
         response.sendRedirect("/oauth2/authorization/azure");
+    }
+
+    private String buildRedirectCookie(String redirect) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(REDIRECT_COOKIE).append("=")
+          .append(java.net.URLEncoder.encode(redirect, StandardCharsets.UTF_8))
+          .append("; Max-Age=300")
+          .append("; Path=/")
+          .append("; HttpOnly");
+        if (cookieSecure) {
+            sb.append("; Secure; SameSite=None");
+        }
+        return sb.toString();
     }
 
     @GetMapping("/auth/me")

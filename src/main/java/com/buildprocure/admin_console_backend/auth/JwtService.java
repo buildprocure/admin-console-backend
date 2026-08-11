@@ -1,4 +1,4 @@
-package com.buildprocure.admin_console_backend.config;
+package com.buildprocure.admin_console_backend.auth;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;

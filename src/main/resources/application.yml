@@ -3,6 +3,10 @@ server:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  # Comma-separated list of origins allowed as a post-login redirect target
+  # (checked by RedirectValidator) and for CORS. Covers the Vite dev server,
+  # the local production-preview server (npm run start), and prod.
+  allowed-redirect-origins: ${ALLOWED_REDIRECT_ORIGINS:http://localhost:5173,http://localhost:4173,https://admin.buildprocure.com}
   jwt-secret: ${JWT_SECRET}
   cookie-secure: ${COOKIE_SECURE:false}
   azure:
