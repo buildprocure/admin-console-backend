@@ -1,30 +1,32 @@
 package com.buildprocure.admin_console_backend.auth;
 
-import com.buildprocure.admin_console_backend.common.util.RedirectValidator;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 @RestController
 public class AuthController {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
+
     @Value("${app.frontend-url}")
     private String frontendUrl;
-
-    @Value("${app.allowed-redirect-origins}")
-    private String allowedRedirectOriginsRaw;
 
     @Value("${app.cookie-secure}")
     private boolean cookieSecure;
@@ -32,24 +34,61 @@ public class AuthController {
     @Value("${app.azure.tenant-id}")
     private String tenantId;
 
-    private static final String REDIRECT_COOKIE = "post_login_redirect";
+    private final JwtService jwtService;
+    private final JwtDecoder microsoftJwtDecoder;
 
-    @GetMapping("/auth/login")
-    public void login(@RequestParam(required = false) String redirect, HttpServletResponse response) throws IOException {
-        Set<String> allowedOrigins = RedirectValidator.parseOrigins(allowedRedirectOriginsRaw);
-        if (RedirectValidator.isAllowed(redirect, allowedOrigins)) {
-            // Carried across the Entra ID round-trip as a short-lived cookie;
-            // OAuthLoginSuccessHandler reads and re-validates it before using it.
-            response.addHeader("Set-Cookie", buildRedirectCookie(redirect));
-        }
-        response.sendRedirect("/oauth2/authorization/azure");
+    public AuthController(JwtService jwtService, JwtDecoder microsoftJwtDecoder) {
+        this.jwtService = jwtService;
+        this.microsoftJwtDecoder = microsoftJwtDecoder;
     }
 
-    private String buildRedirectCookie(String redirect) {
+    // Called by the frontend right after MSAL completes a loginRedirect().
+    // Trades the Microsoft-issued ID token for our own auth_token cookie -
+    // everything else in the app keeps authenticating via that cookie
+    // exactly as before (see JwtAuthFilter), regardless of how the user
+    // originally signed in.
+    @PostMapping("/auth/msal-login")
+    public ResponseEntity<Map<String, String>> msalLogin(@RequestBody MsalLoginRequest request, HttpServletResponse response) {
+        Jwt msToken;
+        try {
+            msToken = microsoftJwtDecoder.decode(request.idToken());
+        } catch (JwtException e) {
+            log.warn("Rejected MSAL ID token: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
+        }
+
+        String name = msToken.getClaimAsString("name");
+        String email = firstNonBlank(
+            msToken.getClaimAsString("email"),
+            msToken.getClaimAsString("preferred_username")
+        );
+
+        if (email == null) {
+            log.warn("MSAL ID token for subject {} had no email or preferred_username claim", msToken.getSubject());
+            return ResponseEntity.status(401).build();
+        }
+
+        String token = jwtService.generateToken(name != null ? name : "Unknown user", email);
+
+        response.addHeader("Set-Cookie", buildCookie("auth_token", token, 8 * 60 * 60));
+        // Kept around so /auth/logout can pass it back to Microsoft as
+        // id_token_hint, same purpose the old backend-driven flow served.
+        response.addHeader("Set-Cookie", buildCookie("ms_id_token", request.idToken(), 8 * 60 * 60));
+
+        Map<String, String> body = new HashMap<>();
+        body.put("name", name != null ? name : "Unknown user");
+        body.put("email", email);
+        return ResponseEntity.ok(body);
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        return (a != null && !a.isBlank()) ? a : b;
+    }
+
+    private String buildCookie(String name, String value, int maxAgeSeconds) {
         StringBuilder sb = new StringBuilder();
-        sb.append(REDIRECT_COOKIE).append("=")
-          .append(java.net.URLEncoder.encode(redirect, StandardCharsets.UTF_8))
-          .append("; Max-Age=300")
+        sb.append(name).append("=").append(value)
+          .append("; Max-Age=").append(maxAgeSeconds)
           .append("; Path=/")
           .append("; HttpOnly");
         if (cookieSecure) {
