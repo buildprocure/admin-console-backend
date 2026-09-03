@@ -3,29 +3,21 @@ server:
 
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
-  # Comma-separated list of origins allowed as a post-login redirect target
-  # (checked by RedirectValidator) and for CORS. Covers the Vite dev server,
-  # the local production-preview server (npm run start), and prod.
-  allowed-redirect-origins: ${ALLOWED_REDIRECT_ORIGINS:http://localhost:5173,http://localhost:4173,https://admin.buildprocure.com}
+  # Comma-separated list of origins allowed to call this API (CORS).
+  # Covers the Vite dev server, the local production-preview server
+  # (npm run start), and prod.
+  allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173,http://localhost:4173,https://admin.buildprocure.com}
   jwt-secret: ${JWT_SECRET}
   cookie-secure: ${COOKIE_SECURE:false}
   azure:
     tenant-id: ${AZURE_TENANT_ID:0f4f143b-570a-4c60-aa54-96f1d9d3fe2e}
+    # Must match the frontend's VITE_AZURE_CLIENT_ID - the dedicated
+    # "Single Page Application - Frontend (Admin-Console)" app registration
+    # (separate from the backend's own app registration). Used by
+    # MsalConfig to reject any ID token whose "aud" claim doesn't match -
+    # i.e. a token issued for some other app in the tenant.
+    client-id: ${AZURE_CLIENT_ID:89a724c9-018a-4cc1-90c7-a9ecc64afc6c}
 
-spring:
-  security:
-    oauth2:
-      client:
-        registration:
-          azure:
-            client-id: ${AZURE_CLIENT_ID}
-            client-secret: ${AZURE_CLIENT_SECRET}
-            scope: openid, profile, email
-            authorization-grant-type: authorization_code
-            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
-        provider:
-          azure:
-            issuer-uri: https://login.microsoftonline.com/${app.azure.tenant-id}/v2.0
 logging:
   level:
     org.springframework.security: INFO

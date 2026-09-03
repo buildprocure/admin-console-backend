@@ -2,8 +2,6 @@ package com.buildprocure.admin_console_backend.common.config;
 
 import com.buildprocure.admin_console_backend.auth.JwtAuthFilter;
 import com.buildprocure.admin_console_backend.auth.JwtService;
-import com.buildprocure.admin_console_backend.auth.OAuthLoginSuccessHandler;
-import com.buildprocure.admin_console_backend.common.util.RedirectValidator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,8 +15,9 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Set;
+import java.util.stream.Collectors;
 
 @Configuration
 public class SecurityConfig {
@@ -28,11 +27,8 @@ public class SecurityConfig {
     @Value("${app.frontend-url}")
     private String frontendUrl;
 
-    @Value("${app.allowed-redirect-origins}")
-    private String allowedRedirectOriginsRaw;
-
-    @Value("${app.cookie-secure}")
-    private boolean cookieSecure;
+    @Value("${app.allowed-origins}")
+    private String allowedOriginsRaw;
 
     public SecurityConfig(JwtService jwtService) {
         this.jwtService = jwtService;
@@ -40,36 +36,33 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        Set<String> allowedRedirectOrigins = RedirectValidator.parseOrigins(allowedRedirectOriginsRaw);
-
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource(allowedRedirectOrigins)))
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // CORS preflight (OPTIONS) requests never carry cookies, so
                 // they must be allowed through before the auth check - else
                 // any request that triggers a preflight (e.g. a custom
-                // Content-Type header) gets treated as unauthenticated and
-                // oauth2Login's entry point redirects it into the OAuth2
-                // login flow instead of letting the real request proceed.
+                // Content-Type header) gets treated as unauthenticated.
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/auth/**").permitAll()
                 .anyRequest().authenticated()
             )
-            .oauth2Login(oauth2 -> oauth2
-                .successHandler(new OAuthLoginSuccessHandler(jwtService, frontendUrl, cookieSecure, allowedRedirectOrigins))
-            )
+            // Authentication for every request (other than /auth/**) is our
+            // own auth_token cookie, minted by AuthController#msalLogin
+            // after MSAL hands the frontend a validated Microsoft ID token.
+            // There's no Spring-managed OAuth2 login flow on the backend
+            // anymore - MSAL owns the entire Entra ID interaction now.
             .addFilterBefore(new JwtAuthFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
     // CORS allows every known-good frontend origin (all lower envs + prod),
-    // not just the single post-login redirect target, so local/preview
-    // builds can call the API directly regardless of which one they are.
-    private CorsConfigurationSource corsConfigurationSource(Set<String> allowedRedirectOrigins) {
-        List<String> origins = new ArrayList<>(allowedRedirectOrigins);
+    // read from app.allowed-origins.
+    private CorsConfigurationSource corsConfigurationSource() {
+        List<String> origins = new ArrayList<>(parseOrigins(allowedOriginsRaw));
         if (!origins.contains(frontendUrl)) {
             origins.add(frontendUrl);
         }
@@ -83,5 +76,15 @@ public class SecurityConfig {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
+    }
+
+    private static List<String> parseOrigins(String commaSeparated) {
+        if (commaSeparated == null || commaSeparated.isBlank()) {
+            return List.of();
+        }
+        return Arrays.stream(commaSeparated.split(","))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toList());
     }
 }
