@@ -1,6 +1,27 @@
 server:
   port: 8080
 
+spring:
+  datasource:
+    # MySQL lives on a separate DigitalOcean droplet. DB_HOST/DB_NAME
+    # default to this project's actual droplet/database so a local run
+    # works without extra setup - same pattern app.azure.tenant-id and
+    # app.azure.client-id below already use for their (non-secret) real
+    # values. DB_USERNAME/DB_PASSWORD stay required env vars with no
+    # default (same as app.jwt-secret) - those are the real secrets, and
+    # they're already saved in GitHub Actions as DB_HOST/DB_USERNAME/
+    # DB_PASSWORD, matching the names used here.
+    url: jdbc:mysql://${DB_HOST:143.198.64.132}:${DB_PORT:3306}/${DB_NAME:ilife}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  jpa:
+    # Tables are created by hand via
+    # src/main/resources/db/access_control_schema.sql - Hibernate never
+    # creates/alters schema on its own.
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+
 app:
   frontend-url: ${FRONTEND_URL:http://localhost:5173}
   # Comma-separated list of origins allowed to call this API (CORS).
@@ -20,4 +41,4 @@ app:
 
 logging:
   level:
-    org.springframework.security: INFO
+    org.springframework.security: DEBUG
